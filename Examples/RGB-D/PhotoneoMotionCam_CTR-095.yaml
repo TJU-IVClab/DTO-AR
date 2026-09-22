@@ -1,0 +1,90 @@
+%YAML:1.0
+
+#--------------------------------------------------------------------------------------------
+# Camera Parameters. Adjust them!
+#--------------------------------------------------------------------------------------------
+File.version: "1.0"
+
+Camera.type: "PinHole"
+
+# Camera calibration and distortion parameters (OpenCV) 
+Camera1.fx: 2335.69 # 1732.39
+Camera1.fy: 2336.19 # 1732.43
+Camera1.cx: 1058.4 # 841.36
+Camera1.cy: 773.34 # 601.08
+# Camera1.fx: 1154.93
+# Camera1.fy: 1154.95
+# Camera1.cx: 560.74
+# Camera1.cy: 400.553
+Camera1.k1: -0.237187 # -0.0867707
+Camera1.k2: 0.165352 # 0.147489
+Camera1.p1: 0.000197394 # 0.000417617
+Camera1.p2: -0.000421582 # 0.000554355
+Camera1.k3: -0.069309 # -0.0370996
+
+Camera.width: 2064 # 1680
+Camera.height: 1544 # 1200
+# Camera.width: 1120
+# Camera.height: 800
+
+# Camera frames per second 
+Camera.fps: 10
+
+# Color order of the images (0: BGR, 1: RGB. It is ignored if images are grayscale)
+Camera.RGB: 1
+
+# Close/Far threshold. Baseline times.
+Stereo.ThDepth: 40.0
+Stereo.b: 0.35000
+
+# Depth map values factor
+RGBD.DepthMapFactor: 1000.0
+
+#--------------------------------------------------------------------------------------------
+# ORB Parameters
+#--------------------------------------------------------------------------------------------
+
+# ORB Extractor: Number of features per image
+ORBextractor.nFeatures: 1000
+
+# ORB Extractor: Scale factor between levels in the scale pyramid 	
+ORBextractor.scaleFactor: 1.2
+
+# ORB Extractor: Number of levels in the scale pyramid	
+ORBextractor.nLevels: 8
+
+# ORB Extractor: Fast threshold
+# Image is divided in a grid. At each cell FAST are extracted imposing a minimum response.
+# Firstly we impose iniThFAST. If no corners are detected we impose a lower value minThFAST
+# You can lower these values if your images have low contrast			
+ORBextractor.iniThFAST: 20
+ORBextractor.minThFAST: 7
+
+#--------------------------------------------------------------------------------------------
+# Viewer Parameters
+#--------------------------------------------------------------------------------------------
+Viewer.KeyFrameSize: 0.05
+Viewer.KeyFrameLineWidth: 1.0
+Viewer.GraphLineWidth: 0.9
+Viewer.PointSize: 2.0
+Viewer.CameraSize: 0.08
+Viewer.CameraLineWidth: 3.0
+Viewer.ViewpointX: 0.0
+Viewer.ViewpointY: -0.7
+Viewer.ViewpointZ: -1.8
+Viewer.ViewpointF: 500.0
+
+#--------------------------------------------------------------------------------------------
+# Matte Spot Parameters # !IVC-lab@lee
+#--------------------------------------------------------------------------------------------
+useMatteSpots: 1
+loopClosing: 0
+onlineProcessing: 1
+denseOpt: 1
+sparseOpt_multimodal: 1
+
+#--------------------------------------------------------------------------------------------
+# Photoneo Parameters # !IVC-lab@lee
+#--------------------------------------------------------------------------------------------
+Photoneo.LEDPower: 4095
+Photoneo.Confidence: 1.0

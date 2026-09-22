@@ -1,0 +1,243 @@
+--- /mnt/data/PCGsolver_full_optimized_joint.cu	2026-03-12 04:57:22.499934454 +0000
++++ /mnt/data/PCGsolver_full_optimized_joint_resmon_macro.cu	2026-03-12 04:58:52.438691416 +0000
+@@ -1,4 +1,4 @@
+-﻿
++
+ // ============================================================================
+ // PCGsolver_full_optimized.cu
+ // Drop-in replacement for the original PCGsolver.cu (Dense point-cloud BA backend)
+@@ -63,13 +63,17 @@
+ #endif
+ 
+ // -------------------------------
+-// Visualization
++// Residual monitoring / visualization
+ // -------------------------------
++#ifndef DENSEBA_ENABLE_RESIDUAL_MONITORING
++#define DENSEBA_ENABLE_RESIDUAL_MONITORING 1
++#endif
++
+ #ifndef DENSEBA_ENABLE_PHO_VIS
+-#define DENSEBA_ENABLE_PHO_VIS 1
++#define DENSEBA_ENABLE_PHO_VIS DENSEBA_ENABLE_RESIDUAL_MONITORING
+ #endif
+ 
+-#if DENSEBA_ENABLE_PHO_VIS
++#if DENSEBA_ENABLE_RESIDUAL_MONITORING && DENSEBA_ENABLE_PHO_VIS
+ static constexpr int kPhoVisTargetJ = 72;
+ #endif
+ 
+@@ -393,14 +397,16 @@
+     float w_geo,
+     float w_pho,
+     float k_pho,
++#if DENSEBA_ENABLE_RESIDUAL_MONITORING
+     float* __restrict__ geo_sum_sq,       // optional (global) sum of e_geo^2 (UNWEIGHTED)
+     unsigned int* __restrict__ geo_count, // optional (global) count of valid geo residuals
+     float* __restrict__ pho_sum_sq,       // optional (global) sum of e_pho^2 (UNWEIGHTED)
+     unsigned int* __restrict__ pho_count  // optional (global) count of valid pho residuals
+-#if DENSEBA_ENABLE_PHO_VIS
++  #if DENSEBA_ENABLE_PHO_VIS
+     ,
+     float* __restrict__ pho_img_sum,        // [H*W] optional: sum of |e_pho| for visualization
+     int pho_vis_target_j                    // only accumulate when edge.j == target
++  #endif
+ #endif
+ )
+ {
+@@ -448,7 +454,7 @@
+             cam, raymap, edge.T_ij,
+             e_pho, J_pho_rel);
+ 
+-#if DENSEBA_ENABLE_PHO_VIS
++#if DENSEBA_ENABLE_RESIDUAL_MONITORING && DENSEBA_ENABLE_PHO_VIS
+         // Accumulate |e_pho| into a global W*H image for visualization (target j-frame only).
+         if (pho_ok && pho_img_sum && edge.j == pho_vis_target_j) {
+             atomicAdd(&pho_img_sum[idx], fabsf(e_pho));
+@@ -474,8 +480,10 @@
+                 for (int c = 0; c < 6; ++c) tmp = fmaf(J_geo_rel[c], A[r * 6 + c], tmp);
+                 Jj_geo[r] = tmp;
+             }
++#if DENSEBA_ENABLE_RESIDUAL_MONITORING
+             geo_res2 = e_geo * e_geo; // UNWEIGHTED for monitoring
+             geo_cnt = 1u;
++#endif
+         }
+         if (pho_ok) {
+ #pragma unroll
+@@ -485,8 +493,10 @@
+                 for (int c = 0; c < 6; ++c) tmp = fmaf(J_pho_rel[c], A[r * 6 + c], tmp);
+                 Jj_pho[r] = tmp;
+             }
++#if DENSEBA_ENABLE_RESIDUAL_MONITORING
+             pho_res2 = e_pho * e_pho; // UNWEIGHTED for monitoring
+             pho_cnt = 1u;
++#endif
+         }
+ 
+         // Normal equations: accumulate geo + pho (weighted)
+@@ -574,11 +584,13 @@
+ #pragma unroll
+         for (int k = 0; k < 21; ++k) atomicAdd(eA + k, shf[0][6 + k]);
+ 
++#if DENSEBA_ENABLE_RESIDUAL_MONITORING
+         if (geo_sum_sq) atomicAdd(geo_sum_sq, shf[0][27]);
+         if (geo_count) atomicAdd(geo_count, shc_geo[0]);
+ 
+         if (pho_sum_sq) atomicAdd(pho_sum_sq, shf[0][28]);
+         if (pho_count) atomicAdd(pho_count, shc_pho[0]);
++#endif
+     }
+ }
+ 
+@@ -1646,14 +1658,16 @@
+     float* d_Minv36 = nullptr; // [F,36]
+     float* d_delta = nullptr; // [F,6] solution
+ 
++#if DENSEBA_ENABLE_RESIDUAL_MONITORING
+     // Residual monitoring (global, per GN iteration)
+     float* d_geo_sumsq = nullptr;           // sum of e_geo^2 (UNWEIGHTED)
+     unsigned int* d_geo_count = nullptr;    // count of valid geo residuals
+     float* d_pho_sumsq = nullptr;           // sum of e_pho^2 (UNWEIGHTED)
+     unsigned int* d_pho_count = nullptr;    // count of valid pho residuals
+-#if DENSEBA_ENABLE_PHO_VIS
++  #if DENSEBA_ENABLE_PHO_VIS
+     float* d_pho_img_sum = nullptr; // [H*W] sum of |e_pho| for visualization (edge.j==kPhoVisTargetJ)
+     std::vector<float> h_pho_img_sum;
++  #endif
+ #endif
+ 
+     CUDA_CHECK(cudaMalloc(&d_edge_g, numEdges * 6 * sizeof(float)));
+@@ -1663,13 +1677,15 @@
+     CUDA_CHECK(cudaMalloc(&d_Minv36, numFrames * 36 * sizeof(float)));
+     CUDA_CHECK(cudaMalloc(&d_delta, n * sizeof(float)));
+ 
++#if DENSEBA_ENABLE_RESIDUAL_MONITORING
+     CUDA_CHECK(cudaMalloc(&d_geo_sumsq, sizeof(float)));
+     CUDA_CHECK(cudaMalloc(&d_geo_count, sizeof(unsigned int)));
+     CUDA_CHECK(cudaMalloc(&d_pho_sumsq, sizeof(float)));
+     CUDA_CHECK(cudaMalloc(&d_pho_count, sizeof(unsigned int)));
+-#if DENSEBA_ENABLE_PHO_VIS
++  #if DENSEBA_ENABLE_PHO_VIS
+     CUDA_CHECK(cudaMalloc(&d_pho_img_sum, imgSize * sizeof(float)));
+     h_pho_img_sum.resize(imgSize);
++  #endif
+ #endif
+ 
+     // PCG workspace
+@@ -1701,11 +1717,13 @@
+ 
+     std::chrono::steady_clock::time_point t1 = std::chrono::steady_clock::now();
+ 
++#if DENSEBA_ENABLE_RESIDUAL_MONITORING
+     // Host-side residual monitoring outputs (updated every GN iteration)
+     float h_geo_sumsq = 0.f;
+     unsigned int h_geo_count = 0u;
+     float h_pho_sumsq = 0.f;
+     unsigned int h_pho_count = 0u;
++#endif
+     // -------- GN outer loop --------
+     for (int iter = 0; iter < maxIter; ++iter)
+     {
+@@ -1760,31 +1778,37 @@
+         // 1) edge normal equations
+         CUDA_CHECK(cudaMemsetAsync(d_edge_g, 0, numEdges * 6 * sizeof(float), stream));
+         CUDA_CHECK(cudaMemsetAsync(d_edge_A21, 0, numEdges * 21 * sizeof(float), stream));
++#if DENSEBA_ENABLE_RESIDUAL_MONITORING
+         CUDA_CHECK(cudaMemsetAsync(d_geo_sumsq, 0, sizeof(float), stream));
+         CUDA_CHECK(cudaMemsetAsync(d_geo_count, 0, sizeof(unsigned int), stream));
+         CUDA_CHECK(cudaMemsetAsync(d_pho_sumsq, 0, sizeof(float), stream));
+         CUDA_CHECK(cudaMemsetAsync(d_pho_count, 0, sizeof(unsigned int), stream));
+-#if DENSEBA_ENABLE_PHO_VIS
++  #if DENSEBA_ENABLE_PHO_VIS
+         CUDA_CHECK(cudaMemsetAsync(d_pho_img_sum, 0, imgSize * sizeof(float), stream));
++  #endif
+ #endif
+         buildEdgeNormalEquations << <grid2d, block2d, 0, stream >> > (
+             d_edges, numEdges, h_cam, d_raymap, d_edge_g, d_edge_A21,
+-            kWGeo, kWPho, kPhoGain_exp_dec,
+-            d_geo_sumsq, d_geo_count,
++            kWGeo, kWPho, kPhoGain_exp_dec
++#if DENSEBA_ENABLE_RESIDUAL_MONITORING
++            , d_geo_sumsq, d_geo_count,
+             d_pho_sumsq, d_pho_count
+-#if DENSEBA_ENABLE_PHO_VIS
++  #if DENSEBA_ENABLE_PHO_VIS
+             , d_pho_img_sum, kPhoVisTargetJ
++  #endif
+ #endif
+             );
+         CUDA_CHECK(cudaGetLastError());
+ 
++#if DENSEBA_ENABLE_RESIDUAL_MONITORING
+         // Read back residual stats (async; will be valid after the later stream sync)
+         CUDA_CHECK(cudaMemcpyAsync(&h_geo_sumsq, d_geo_sumsq, sizeof(float), cudaMemcpyDeviceToHost, stream));
+         CUDA_CHECK(cudaMemcpyAsync(&h_geo_count, d_geo_count, sizeof(unsigned int), cudaMemcpyDeviceToHost, stream));
+         CUDA_CHECK(cudaMemcpyAsync(&h_pho_sumsq, d_pho_sumsq, sizeof(float), cudaMemcpyDeviceToHost, stream));
+         CUDA_CHECK(cudaMemcpyAsync(&h_pho_count, d_pho_count, sizeof(unsigned int), cudaMemcpyDeviceToHost, stream));
+-#if DENSEBA_ENABLE_PHO_VIS
++  #if DENSEBA_ENABLE_PHO_VIS
+         CUDA_CHECK(cudaMemcpyAsync(h_pho_img_sum.data(), d_pho_img_sum, imgSize * sizeof(float), cudaMemcpyDeviceToHost, stream));
++  #endif
+ #endif
+ 
+         // 2) global b and Hii
+@@ -1807,7 +1831,7 @@
+         CUDA_CHECK(cudaMemcpyAsync(h_delta.data(), d_delta, n * sizeof(float),
+             cudaMemcpyDeviceToHost, stream));
+         CUDA_CHECK(cudaStreamSynchronize(stream));
+-#if DENSEBA_ENABLE_PHO_VIS
++#if DENSEBA_ENABLE_RESIDUAL_MONITORING && DENSEBA_ENABLE_PHO_VIS
+         {
+             // Visualize accumulated |e_pho| on the target j-frame pixel domain.
+             cv::Mat pho_sum(h_cam.height, h_cam.width, CV_32FC1, h_pho_img_sum.data());
+@@ -1854,6 +1878,7 @@
+             kWPho = expf(logf(fmaxf(kWPho, eps)) + beta * (logf(w_pho_t) - logf(fmaxf(kWPho, eps))));
+         }*/
+ 
++#if DENSEBA_ENABLE_RESIDUAL_MONITORING
+         // Residual monitoring at the current linearization point (after edge build)
+         double geo_rms = 0.0;
+         double E_geo_total = 0.0;
+@@ -1867,6 +1892,7 @@
+             pho_rms = std::sqrt(double(h_pho_sumsq) / double(h_pho_count));
+             E_pho_total = kWPho * h_pho_sumsq * pow(kPhoGain_exp_dec, 2);
+         }
++#endif
+ 
+         for (int i = 0; i < numFrames; ++i)
+         {
+@@ -1911,13 +1937,17 @@
+         double t_opt = std::chrono::duration_cast<std::chrono::duration<double>>(t2 - t1).count();
+         cout << "[Dense BA] iter " << iter
+             << " stepNorm=" << stepNorm
++#if DENSEBA_ENABLE_RESIDUAL_MONITORING
+             << " geo_rms=" << geo_rms / kDepthScale << " /mm"
+             << " geo_cnt=" << h_geo_count
+             << " pho_rms=" << pho_rms << " /1"
+             << " pho_cnt=" << h_pho_count
++#endif
+             << " time=" << t_opt << endl;
++#if DENSEBA_ENABLE_RESIDUAL_MONITORING
+         cout << "E_geo=" << E_geo_total << "       "
+             << " E_pho=" << E_pho_total << endl;
++#endif
+         if ((float)stepNorm < tol) {
+             cout << "[Dense BA] Converged (stepNorm < tol)." << endl;
+             break;
+@@ -1943,12 +1973,14 @@
+     cudaFree(d_Hii21);
+     cudaFree(d_Minv36);
+     cudaFree(d_delta);
++#if DENSEBA_ENABLE_RESIDUAL_MONITORING
+     cudaFree(d_geo_sumsq);
+     cudaFree(d_geo_count);
+     cudaFree(d_pho_sumsq);
+     cudaFree(d_pho_count);
+-#if DENSEBA_ENABLE_PHO_VIS
++  #if DENSEBA_ENABLE_PHO_VIS
+     cudaFree(d_pho_img_sum);
++  #endif
+ #endif
+ cleanup:
+     cudaFree(d_raymap);

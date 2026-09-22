@@ -1,0 +1,301 @@
+--- /mnt/data/PCGsolver_full_optimized_joint_resmon_macro.cu	2026-03-19 16:09:37.934155433 +0000
++++ /mnt/data/PCGsolver_full_optimized_joint_resmon_macro_directed_confidence.cu	2026-03-19 16:15:56.924864077 +0000
+@@ -33,6 +33,7 @@
+ #include <unordered_map>
+ #include <algorithm>
+ #include <iostream>
++#include <fstream>
+ #include <cmath>
+ #include <cstring>
+ 
+@@ -95,6 +96,73 @@
+ //static float kWPho = 4.0f;
+ static float kWPho = 3e2f;
+ 
++static inline float clamp01f(float x)
++{
++    return std::max(0.0f, std::min(1.0f, x));
++}
++
++static float robustMedianPositive(std::vector<float> v)
++{
++    v.erase(std::remove_if(v.begin(), v.end(),
++        [](float x) { return !std::isfinite(x) || x <= 0.0f; }),
++        v.end());
++
++    if (v.empty()) return 1.0f;
++
++    const size_t m = v.size() / 2;
++    std::nth_element(v.begin(), v.begin() + m, v.end());
++    float med = v[m];
++
++    if ((v.size() & 1u) == 0u) {
++        std::nth_element(v.begin(), v.begin() + m - 1, v.end());
++        med = 0.5f * (med + v[m - 1]);
++    }
++
++    return std::max(med, 1e-12f);
++}
++
++static void saveRelativePoseConfidenceMatrix(
++    const std::vector<cuEdge>& h_edges,
++    const std::vector<float>& edge_conf,
++    int numFrames,
++    const std::string& csv_path = "relative_pose_confidence_matrix.csv",
++    const std::string& png_path = "relative_pose_confidence_matrix.png")
++{
++    cv::Mat conf = cv::Mat::zeros(numFrames, numFrames, CV_32F);
++
++    // Directed matrix: M(i,j) = confidence of edge i -> j
++    for (size_t e = 0; e < h_edges.size(); ++e) {
++        const int i = h_edges[e].i;
++        const int j = h_edges[e].j;
++        conf.at<float>(i, j) = clamp01f(edge_conf[e]);
++    }
++
++    for (int i = 0; i < numFrames; ++i) {
++        conf.at<float>(i, i) = 1.0f;
++    }
++
++    std::ofstream ofs(csv_path);
++    for (int r = 0; r < numFrames; ++r) {
++        for (int c = 0; c < numFrames; ++c) {
++            if (c) ofs << ",";
++            ofs << conf.at<float>(r, c);
++        }
++        ofs << "\n";
++    }
++    ofs.close();
++
++    cv::Mat vis8u, visColor;
++    conf.convertTo(vis8u, CV_8U, 255.0);
++    cv::applyColorMap(vis8u, visColor, cv::COLORMAP_VIRIDIS);
++
++    int scale = std::max(1, 768 / std::max(numFrames, 1));
++    cv::resize(visColor, visColor,
++        cv::Size(numFrames * scale, numFrames * scale),
++        0, 0, cv::INTER_NEAREST);
++
++    cv::imwrite(png_path, visColor);
++}
++
+ // ============================================================================
+ // Device helpers
+ // ============================================================================
+@@ -363,14 +431,19 @@
+     float k_pho
+ #if DENSEBA_ENABLE_RESIDUAL_MONITORING
+     ,
+-    float* __restrict__ geo_sum_sq,       // optional (global) sum of e_geo^2 (UNWEIGHTED)
+-    unsigned int* __restrict__ geo_count, // optional (global) count of valid geo residuals
+-    float* __restrict__ pho_sum_sq,       // optional (global) sum of e_pho^2 (UNWEIGHTED)
+-    unsigned int* __restrict__ pho_count  // optional (global) count of valid pho residuals
++    float* __restrict__ edge_geo_sum_sq,       // [E] optional, per-edge sum of e_geo^2 (UNWEIGHTED)
++    unsigned int* __restrict__ edge_geo_count, // [E] optional, per-edge count of valid geo residuals
++    float* __restrict__ edge_pho_sum_sq,       // [E] optional, per-edge sum of e_pho^2 (UNWEIGHTED)
++    unsigned int* __restrict__ edge_pho_count, // [E] optional, per-edge count of valid pho residuals
++
++    float* __restrict__ geo_sum_sq,            // optional (global) sum of e_geo^2 (UNWEIGHTED)
++    unsigned int* __restrict__ geo_count,      // optional (global) count of valid geo residuals
++    float* __restrict__ pho_sum_sq,            // optional (global) sum of e_pho^2 (UNWEIGHTED)
++    unsigned int* __restrict__ pho_count       // optional (global) count of valid pho residuals
+ #if DENSEBA_ENABLE_PHO_VIS
+     ,
+-    float* __restrict__ pho_img_sum,        // [H*W] optional: sum of |e_pho| for visualization
+-    int pho_vis_target_j                    // only accumulate when edge.j == target
++    float* __restrict__ pho_img_sum,           // [H*W] optional: sum of |e_pho| for visualization
++    int pho_vis_target_j                       // only accumulate when edge.j == target
+ #endif
+ #endif
+ )
+@@ -550,6 +623,12 @@
+         for (int k = 0; k < 21; ++k) atomicAdd(eA + k, shf[0][6 + k]);
+ 
+ #if DENSEBA_ENABLE_RESIDUAL_MONITORING
++        if (edge_geo_sum_sq) atomicAdd(edge_geo_sum_sq + e, shf[0][27]);
++        if (edge_geo_count)  atomicAdd(edge_geo_count + e, shc_geo[0]);
++
++        if (edge_pho_sum_sq) atomicAdd(edge_pho_sum_sq + e, shf[0][28]);
++        if (edge_pho_count)  atomicAdd(edge_pho_count + e, shc_pho[0]);
++
+         if (geo_sum_sq) atomicAdd(geo_sum_sq, shf[0][27]);
+         if (geo_count) atomicAdd(geo_count, shc_geo[0]);
+ 
+@@ -1182,6 +1261,17 @@
+     unsigned int* d_geo_count = nullptr;    // count of valid geo residuals
+     float* d_pho_sumsq = nullptr;           // sum of e_pho^2 (UNWEIGHTED)
+     unsigned int* d_pho_count = nullptr;    // count of valid pho residuals
++
++    // Final directed relative-pose confidence stats (per edge, evaluated after final pose update)
++    float* d_edge_geo_sumsq = nullptr;
++    unsigned int* d_edge_geo_count = nullptr;
++    float* d_edge_pho_sumsq = nullptr;
++    unsigned int* d_edge_pho_count = nullptr;
++
++    std::vector<float> h_edge_geo_sumsq;
++    std::vector<unsigned int> h_edge_geo_count;
++    std::vector<float> h_edge_pho_sumsq;
++    std::vector<unsigned int> h_edge_pho_count;
+ #if DENSEBA_ENABLE_PHO_VIS
+     float* d_pho_img_sum = nullptr; // [H*W] sum of |e_pho| for visualization (edge.j==kPhoVisTargetJ)
+     std::vector<float> h_pho_img_sum;
+@@ -1200,6 +1290,16 @@
+     CUDA_CHECK(cudaMalloc(&d_geo_count, sizeof(unsigned int)));
+     CUDA_CHECK(cudaMalloc(&d_pho_sumsq, sizeof(float)));
+     CUDA_CHECK(cudaMalloc(&d_pho_count, sizeof(unsigned int)));
++
++    CUDA_CHECK(cudaMalloc(&d_edge_geo_sumsq, numEdges * sizeof(float)));
++    CUDA_CHECK(cudaMalloc(&d_edge_geo_count, numEdges * sizeof(unsigned int)));
++    CUDA_CHECK(cudaMalloc(&d_edge_pho_sumsq, numEdges * sizeof(float)));
++    CUDA_CHECK(cudaMalloc(&d_edge_pho_count, numEdges * sizeof(unsigned int)));
++
++    h_edge_geo_sumsq.resize(numEdges);
++    h_edge_geo_count.resize(numEdges);
++    h_edge_pho_sumsq.resize(numEdges);
++    h_edge_pho_count.resize(numEdges);
+ #if DENSEBA_ENABLE_PHO_VIS
+     CUDA_CHECK(cudaMalloc(&d_pho_img_sum, imgSize * sizeof(float)));
+     h_pho_img_sum.resize(imgSize);
+@@ -1250,10 +1350,8 @@
+     float h_pho_sumsq = 0.f;
+     unsigned int h_pho_count = 0u;
+ #endif
+-    // -------- GN outer loop --------
+-    for (int iter = 0; iter < maxIter; ++iter)
+-    {
+-        // Update per-edge T_ij and AdInv from current KF poses (host), then copy to device.
++
++    auto refreshEdgesFromCurrentKFPoses = [&]() {
+         for (int eIdx = 0; eIdx < numEdges; ++eIdx) {
+             cuEdge& e = h_edges[eIdx];
+ 
+@@ -1294,8 +1392,15 @@
+             std::memcpy(AdInv.data, Ad.data(), 36 * sizeof(float));
+             e.d_AdInv = AdInv;
+         }
++    };
++
++    // -------- GN outer loop --------
++    for (int iter = 0; iter < maxIter; ++iter)
++    {
++        // Update per-edge T_ij and AdInv from current KF poses (host), then copy to device.
++        refreshEdgesFromCurrentKFPoses();
+ 
+-        float t = (float)iter / (maxIter - 1);
++        float t = (maxIter > 1) ? (float(iter) / float(maxIter - 1)) : 1.0f;
+         float kPhoGain_exp_dec = kPhoGain * powf(1.0f / kPhoGain, t); /*kPhoGain*/;
+ 
+         CUDA_CHECK(cudaMemcpyAsync(d_edges, h_edges.data(), numEdges * sizeof(cuEdge),
+@@ -1319,6 +1424,7 @@
+             d_edges, numEdges, h_cam, d_raymap, d_edge_g, d_edge_A21,
+             kWGeo, kWPho, kPhoGain_exp_dec
+ #if DENSEBA_ENABLE_RESIDUAL_MONITORING
++            , nullptr, nullptr, nullptr, nullptr
+             , d_geo_sumsq, d_geo_count,
+             d_pho_sumsq, d_pho_count
+ #if DENSEBA_ENABLE_PHO_VIS
+@@ -1489,7 +1595,91 @@
+         cout << "E_geo=" << E_geo_total << "       "
+             << " E_pho=" << E_pho_total << endl;
+ #endif*/
+-        if ((float)stepNorm < tol || iter == maxIter - 1) {
++        const bool shouldStop = ((float)stepNorm < tol || iter == maxIter - 1);
++        if (shouldStop) {
++#if DENSEBA_ENABLE_RESIDUAL_MONITORING
++            // IMPORTANT: current h_geo_sumsq / h_pho_sumsq were measured before SetPose().
++            // Re-evaluate one final time at the updated poses to obtain directed edge confidences.
++            refreshEdgesFromCurrentKFPoses();
++            CUDA_CHECK(cudaMemcpyAsync(d_edges, h_edges.data(), numEdges * sizeof(cuEdge),
++                cudaMemcpyHostToDevice, stream));
++
++            CUDA_CHECK(cudaMemsetAsync(d_edge_g, 0, numEdges * 6 * sizeof(float), stream));
++            CUDA_CHECK(cudaMemsetAsync(d_edge_A21, 0, numEdges * 21 * sizeof(float), stream));
++            CUDA_CHECK(cudaMemsetAsync(d_edge_geo_sumsq, 0, numEdges * sizeof(float), stream));
++            CUDA_CHECK(cudaMemsetAsync(d_edge_geo_count, 0, numEdges * sizeof(unsigned int), stream));
++            CUDA_CHECK(cudaMemsetAsync(d_edge_pho_sumsq, 0, numEdges * sizeof(float), stream));
++            CUDA_CHECK(cudaMemsetAsync(d_edge_pho_count, 0, numEdges * sizeof(unsigned int), stream));
++
++            buildEdgeNormalEquations << <grid2d, block2d, 0, stream >> > (
++                d_edges, numEdges, h_cam, d_raymap, d_edge_g, d_edge_A21,
++                kWGeo, kWPho, kPhoGain_exp_dec
++#if DENSEBA_ENABLE_RESIDUAL_MONITORING
++                , d_edge_geo_sumsq, d_edge_geo_count,
++                d_edge_pho_sumsq, d_edge_pho_count
++                , nullptr, nullptr, nullptr, nullptr
++#if DENSEBA_ENABLE_PHO_VIS
++                , nullptr, -1
++#endif
++#endif
++                );
++            CUDA_CHECK(cudaGetLastError());
++
++            CUDA_CHECK(cudaMemcpyAsync(h_edge_geo_sumsq.data(), d_edge_geo_sumsq,
++                numEdges * sizeof(float), cudaMemcpyDeviceToHost, stream));
++            CUDA_CHECK(cudaMemcpyAsync(h_edge_geo_count.data(), d_edge_geo_count,
++                numEdges * sizeof(unsigned int), cudaMemcpyDeviceToHost, stream));
++            CUDA_CHECK(cudaMemcpyAsync(h_edge_pho_sumsq.data(), d_edge_pho_sumsq,
++                numEdges * sizeof(float), cudaMemcpyDeviceToHost, stream));
++            CUDA_CHECK(cudaMemcpyAsync(h_edge_pho_count.data(), d_edge_pho_count,
++                numEdges * sizeof(unsigned int), cudaMemcpyDeviceToHost, stream));
++            CUDA_CHECK(cudaStreamSynchronize(stream));
++
++            std::vector<float> edge_energy_ms;
++            edge_energy_ms.reserve(numEdges);
++            std::vector<float> edge_conf(numEdges, 0.0f);
++
++            const float N0 = 0.02f * float(width * height);
++
++            for (int e = 0; e < numEdges; ++e) {
++                const unsigned int Ng = h_edge_geo_count[e];
++                const unsigned int Np = h_edge_pho_count[e];
++                const unsigned int N = Ng + Np;
++                if (N == 0u) continue;
++
++                const float E =
++                    kWGeo * h_edge_geo_sumsq[e] +
++                    kWPho * (kPhoGain_exp_dec * kPhoGain_exp_dec) * h_edge_pho_sumsq[e];
++
++                const float Ebar = E / float(N); // weighted mean squared residual
++                edge_conf[e] = Ebar;             // temporary storage before [0,1] mapping
++                edge_energy_ms.push_back(Ebar);
++            }
++
++            const float tau = robustMedianPositive(edge_energy_ms);
++
++            for (int e = 0; e < numEdges; ++e) {
++                const unsigned int N = h_edge_geo_count[e] + h_edge_pho_count[e];
++                if (N == 0u) {
++                    edge_conf[e] = 0.0f;
++                    continue;
++                }
++
++                const float Ebar = edge_conf[e];
++                const float c_res = 1.0f / (1.0f + Ebar / (tau + 1e-12f));
++                const float c_sup = 1.0f - std::exp(-float(N) / (N0 + 1e-12f));
++                edge_conf[e] = clamp01f(c_res * c_sup);
++            }
++
++            saveRelativePoseConfidenceMatrix(
++                h_edges, edge_conf, numFrames,
++                "relative_pose_confidence_matrix.csv",
++                "relative_pose_confidence_matrix.png");
++
++            cout << "[Dense BA] saved directed relative pose confidence matrix: "
++                 << "relative_pose_confidence_matrix.csv / .png" << endl;
++#endif
++
+             if ((float)stepNorm < tol)
+                 cout << "[Dense BA] Converged (stepNorm < tol)." << endl;
+             std::chrono::steady_clock::time_point t2 = std::chrono::steady_clock::now();
+@@ -1533,6 +1723,11 @@
+     cudaFree(d_geo_count);
+     cudaFree(d_pho_sumsq);
+     cudaFree(d_pho_count);
++
++    cudaFree(d_edge_geo_sumsq);
++    cudaFree(d_edge_geo_count);
++    cudaFree(d_edge_pho_sumsq);
++    cudaFree(d_edge_pho_count);
+ #if DENSEBA_ENABLE_PHO_VIS
+     cudaFree(d_pho_img_sum);
+ #endif
