@@ -4,7 +4,17 @@
 
 
 ## 1. Licenses
-The source code is released under [GPLv3](http://www.gnu.org/licenses/) license.
+The source code is released under [GPLv3](http://www.gnu.org/licenses/) license. If you use DTO-AR in an academic work, please cite:
+  
+    @article{DTO-AR_TIM,
+      title={Dual-Tier Optimization for Accurate and Real-Time Mobile Structured-Light Measurement of Large-Scale Surfaces},
+      author={Bowen Li, Ze Yang, Yanbiao Sun, and Jigui Zhu},
+      journal={IEEE Transactions on Instrumentation and Measurement}, 
+      volume={},
+      number={},
+      pages={},
+      year={}
+     }
 
 ## 2. Prerequisites
 
