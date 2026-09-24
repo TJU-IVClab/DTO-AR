@@ -39,7 +39,7 @@ Before running, please make the dependency DLLs available through `PATH` or besi
 Run the demo from the repository root, with online or offline mode selected in the settings file:
 
 ```powershell
-# Online acquisition
+# Online processing
 .\bin\rgbd_tum.exe "path_to_vocabulary" "path_to_settings"
 
 # Offline processing
