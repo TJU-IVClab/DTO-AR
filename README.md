@@ -6,7 +6,7 @@ Smooth geometry, weak texture, and limited overlap can leave inter-view motion p
 
 <img src="assets/exp_setup_scale.png">
 
-DTO-AR addresses this problem through two complementary optimization tiers linked by a shared fiducial observation model. The proposed framework achieves sub-millimeter surface-deviation RMSE across four industrial workpieces under the reported evaluation protocol, while supporting online acquisition at the scanner's maximum rate of 5 FPS.
+DTO-AR addresses this problem through two complementary optimization tiers linked by a shared fiducial observation model. The framework achieves sub-millimeter surface-deviation RMSE across four industrial workpieces under the reported evaluation protocol, while supporting online acquisition at the scanner's maximum rate of 5 FPS.
 
 <img src="assets/pipeline_boxed_tie.png">
 
