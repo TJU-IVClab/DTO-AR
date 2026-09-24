@@ -11,11 +11,15 @@ The measurement framework achieves sub-millimeter surface-deviation RMSE across 
 ## 2. On-Site Experiments
 ### Measurement Objects
 
+The framework is evaluated on an aircraft fuselage, an aircraft wing, and two full-scale industrial piping systems. These workpieces cover smooth aircraft skins, extended pipe networks, and complex assemblies with branches, bends, flanges, and a large vessel, providing varied spatial extents and geometric constraints.
+
 <img src="assets/exp_setup_scale.png">
 
 ### Measurement Results
-<img src="assets/Aircraft components.png">
-<img src="assets/Industrial piping systems.png">
+
+The globally refined measurements are rigidly aligned with independent reference models acquired using a Hexagon T-Scan system.
+
+<img src="assets/results.png">
 
 ## 3. Licenses
 The source code is released under [GPLv3](http://www.gnu.org/licenses/) license. If you use DTO-AR in an academic work, please cite:
