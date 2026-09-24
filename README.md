@@ -1,4 +1,4 @@
-## Dual-Tier Opt. for Accurate and Real-Time Measurement of Large-Scale Surfaces
+## Dual-Tier Opt. for Accurate and Real-Time Mobile SL Measurement of Large-Scale Surfaces
 
 <img src="assets/pipeline_boxed_tie.png">
 
