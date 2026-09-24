@@ -4,22 +4,11 @@
 
 Smooth geometry, weak texture, and limited overlap can leave inter-view motion poorly constrained, allowing registration errors to accumulate over extended scan sequences. DTO-AR addresses this problem through two complementary optimization tiers linked by a shared fiducial observation model.
 
-The measurement framework achieves sub-millimeter surface-deviation RMSE across four industrial workpieces under the reported evaluation protocol, while supporting online acquisition at the scanner's maximum rate of 5 FPS.
+<img src="assets/exp_setup_scale.png">
 
 <img src="assets/pipeline_boxed_tie.png">
 
-## 2. On-Site Experiments
-### Measurement Objects
-
-The framework is evaluated on an aircraft fuselage, an aircraft wing, and two full-scale industrial piping systems. These workpieces cover smooth aircraft skins, extended pipe networks, and complex assemblies with branches, bends, flanges, and a large vessel, providing varied spatial extents and geometric constraints.
-
-<img src="assets/exp_setup_scale.png">
-
-### Measurement Results
-
-The globally refined measurements are rigidly aligned with independent reference models acquired using a Hexagon T-Scan system.
-
-<img src="assets/results.png">
+The measurement framework achieves sub-millimeter surface-deviation RMSE across four industrial workpieces under the reported evaluation protocol, while supporting online acquisition at the scanner's maximum rate of 5 FPS.
 
 ## 3. Licenses
 The source code is released under [GPLv3](http://www.gnu.org/licenses/) license. If you use DTO-AR in an academic work, please cite:
@@ -69,5 +58,9 @@ Run the demo from the repository root, with online or offline mode selected in t
 .\bin\rgbd_tum.exe "path_to_vocabulary" "path_to_settings" "path_to_sequence" "path_to_association"
 ```
 
-## 6. Credits
+## 6. Download Example Sequence
+
+The aircraft fuselage sequence is available at [IEEE DataPort](https://ieee-dataport.org/documents/aircraft-fuselage-dataset-acquired-mobile-structured-light-scanner).
+
+## 7. Credits
 Many thanks to [ORB-SLAM3](https://github.com/UZ-SLAMLab/ORB_SLAM3) and [BundleFusion](https://github.com/niessner/BundleFusion). Our system is primarily based on the first project, with some implementation details adapted from the second project.
