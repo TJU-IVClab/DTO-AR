@@ -2,13 +2,13 @@
 
 ## 1. Introduction
 
-Smooth geometry, weak texture, and limited overlap can leave inter-view motion poorly constrained, allowing registration errors to accumulate over extended scan sequences. DTO-AR addresses this problem through two complementary optimization tiers linked by a shared fiducial observation model.
+Smooth geometry, weak texture, and limited overlap can leave inter-view motion poorly constrained, allowing registration errors to accumulate over extended scan sequences.
 
 <img src="assets/exp_setup_scale.png">
 
-<img src="assets/pipeline_boxed_tie.png">
+DTO-AR addresses this problem through two complementary optimization tiers linked by a shared fiducial observation model. The proposed framework achieves sub-millimeter surface-deviation RMSE across four industrial workpieces under the reported evaluation protocol, while supporting online acquisition at the scanner's maximum rate of 5 FPS.
 
-The measurement framework achieves sub-millimeter surface-deviation RMSE across four industrial workpieces under the reported evaluation protocol, while supporting online acquisition at the scanner's maximum rate of 5 FPS.
+<img src="assets/pipeline_boxed_tie.png">
 
 ## 3. Licenses
 The source code is released under [GPLv3](http://www.gnu.org/licenses/) license. If you use DTO-AR in an academic work, please cite:
